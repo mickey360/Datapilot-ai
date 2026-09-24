@@ -14,8 +14,15 @@ export type Table = {
   table_name: string;
 };
 
+export type Relation = {
+  table_name: string;
+  column_name: string;
+  foreign_table_name: string;
+  foreign_column_name: string;
+};
+
 export async function getPublicSchema() {
-  const tables = await db<Table[]>`
+  const tables = await db`
     select table_schema, table_name
     from information_schema.tables
     where table_schema = 'public'
@@ -24,7 +31,7 @@ export async function getPublicSchema() {
     order by table_name
   `;
 
-  const columns = await db<Column[]>`
+  const columns = await db`
     select table_schema, table_name, column_name, data_type, is_nullable
     from information_schema.columns
     where table_schema = 'public'
@@ -32,12 +39,7 @@ export async function getPublicSchema() {
     order by table_name, ordinal_position
   `;
 
-  const relations = await db<{
-    table_name: string;
-    column_name: string;
-    foreign_table_name: string;
-    foreign_column_name: string;
-  }[]>`
+  const relations = await db`
     select
       tc.table_name,
       kcu.column_name,
@@ -58,20 +60,30 @@ export async function getPublicSchema() {
   return { tables, columns, relations };
 }
 
-export function schemaPrompt(schema: Awaited<ReturnType<typeof getPublicSchema>>) {
-  const chunks = schema.tables.map(t => {
+export function schemaPrompt(
+  schema: Awaited<ReturnType<typeof getPublicSchema>>
+) {
+  const chunks = schema.tables.map((t) => {
     const cols = schema.columns
-      .filter(c => c.table_name === t.table_name)
-      .map(c => `${c.column_name}:${c.data_type}`)
+      .filter((c) => c.table_name === t.table_name)
+      .map((c) => `${c.column_name}:${c.data_type}`)
       .join(", ");
+
     return `${t.table_name}(${cols})`;
   });
 
   const relationText = schema.relations.length
-    ? "\nRELATIONSHIPS:\n" + schema.relations
-        .map(r => `${r.table_name}.${r.column_name} -> ${r.foreign_table_name}.${r.foreign_column_name}`)
+    ? "\nRELATIONSHIPS:\n" +
+      schema.relations
+        .map(
+          (r) =>
+            `${r.table_name}.${r.column_name} -> ${r.foreign_table_name}.${r.foreign_column_name}`
+        )
         .join("\n")
     : "";
 
-  return (`TABLES:\n${chunks.join("\n")}${relationText}`).slice(0, env.MAX_SCHEMA_CHARS);
+  return (`TABLES:\n${chunks.join("\n")}${relationText}`).slice(
+    0,
+    env.MAX_SCHEMA_CHARS
+  );
 }
